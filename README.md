@@ -6,7 +6,11 @@ GitHub CopilotやClaude Codeのスキル・instructions・agentsを、1コマン
 
 ## インストール
 
+Rust toolchain（1.75以上）が必要。
+
 ```bash
+git clone https://github.com/ya-uhs/copm
+cd copm
 cargo install --path .
 ```
 
@@ -185,9 +189,9 @@ copm list -g
 
 ```
 my-skill/
-└── SKILL.md       ← 必須
-    prompt.md
-    README.md
+├── SKILL.md       ← 必須
+├── prompt.md
+└── README.md
 ```
 
 ```bash
