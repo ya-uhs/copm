@@ -455,3 +455,98 @@ fn test_uninstall_by_files() {
     assert!(!file1.exists());
     assert!(!dir1.exists());
 }
+
+// ── Single-file install ───────────────────────────────────────────────────────
+
+#[test]
+fn test_detect_single_file_prompt() {
+    let tmp = tempfile::tempdir().unwrap();
+    let prompts_dir = tmp.path().join("prompts");
+    std::fs::create_dir_all(&prompts_dir).unwrap();
+    std::fs::write(prompts_dir.join("update-llms.prompt.md"), "# Update LLMs").unwrap();
+    std::fs::write(prompts_dir.join("other.prompt.md"), "# Other").unwrap();
+
+    // Specifying a single file → only that file is the target
+    let manifest = PackageManifest::detect_from_dir(
+        tmp.path(),
+        Some("prompts/update-llms.prompt.md"),
+        "github/awesome-copilot",
+    )
+    .unwrap();
+    assert_eq!(manifest.targets.len(), 1);
+    assert_eq!(manifest.targets[0].target_type, "copilot-prompts");
+    assert_eq!(manifest.targets[0].path, "prompts/update-llms.prompt.md");
+}
+
+#[test]
+fn test_detect_single_file_agent() {
+    let tmp = tempfile::tempdir().unwrap();
+    let agents_dir = tmp.path().join("agents");
+    std::fs::create_dir_all(&agents_dir).unwrap();
+    std::fs::write(agents_dir.join("architect.agent.md"), "# Architect").unwrap();
+
+    let manifest = PackageManifest::detect_from_dir(
+        tmp.path(),
+        Some("agents/architect.agent.md"),
+        "github/awesome-copilot",
+    )
+    .unwrap();
+    assert_eq!(manifest.targets[0].target_type, "copilot-agents");
+    assert_eq!(manifest.targets[0].path, "agents/architect.agent.md");
+}
+
+#[test]
+fn test_detect_single_file_instructions() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("react.instructions.md"), "Use React").unwrap();
+
+    let manifest =
+        PackageManifest::detect_from_dir(tmp.path(), Some("react.instructions.md"), "user/repo")
+            .unwrap();
+    assert_eq!(manifest.targets[0].target_type, "copilot-custom-instructions");
+}
+
+#[test]
+fn test_detect_single_file_unrecognized() {
+    let tmp = tempfile::tempdir().unwrap();
+    std::fs::write(tmp.path().join("Cargo.toml"), "[package]").unwrap();
+
+    let result =
+        PackageManifest::detect_from_dir(tmp.path(), Some("Cargo.toml"), "user/repo");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("Unrecognized file type"));
+}
+
+#[test]
+fn test_install_single_file_prompt() {
+    let tmp = tempfile::tempdir().unwrap();
+
+    // Source: a prompts/ dir with two files
+    let prompts_dir = tmp.path().join("source").join("prompts");
+    std::fs::create_dir_all(&prompts_dir).unwrap();
+    std::fs::write(prompts_dir.join("update-llms.prompt.md"), "# Update LLMs").unwrap();
+    std::fs::write(prompts_dir.join("other.prompt.md"), "# Other").unwrap();
+
+    // Detect with file subpath
+    let manifest = PackageManifest::detect_from_dir(
+        &tmp.path().join("source"),
+        Some("prompts/update-llms.prompt.md"),
+        "github/awesome-copilot",
+    )
+    .unwrap();
+    assert_eq!(manifest.targets[0].target_type, "copilot-prompts");
+
+    // Verify only one file would be installed (path points to a file)
+    let target = &manifest.targets[0];
+    let target_path = tmp.path().join("source").join(&target.path);
+    assert!(target_path.is_file());
+
+    // Manually replicate install_single_file to avoid CWD dependency
+    let dest_dir = tmp.path().join("project").join(".github").join("prompts");
+    std::fs::create_dir_all(&dest_dir).unwrap();
+    let dest = dest_dir.join(target_path.file_name().unwrap());
+    std::fs::copy(&target_path, &dest).unwrap();
+
+    assert!(dest_dir.join("update-llms.prompt.md").exists());
+    assert!(!dest_dir.join("other.prompt.md").exists()); // only one file copied
+}

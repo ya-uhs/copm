@@ -33,13 +33,32 @@ impl PackageManifest {
             .unwrap_or_else(|| "unknown".to_string());
 
         if let Some(sp) = sub_path {
-            // Scoped to a specific sub-directory: return exactly one target
             let scoped = dir.join(sp);
             if !scoped.exists() {
                 return Err(CopmError::NoTargetsDetected(format!(
                     "{source}:{sp} does not exist"
                 )));
             }
+
+            // Single-file install: sub_path points directly to a file
+            if scoped.is_file() {
+                let file_name = scoped.file_name().unwrap().to_string_lossy();
+                let target_type = classify_file(&file_name).ok_or_else(|| {
+                    CopmError::NoTargetsDetected(format!(
+                        "Unrecognized file type: {file_name}"
+                    ))
+                })?;
+                return Ok(Self {
+                    name,
+                    version: "0.0.0".to_string(),
+                    targets: vec![Target {
+                        target_type,
+                        path: sp.to_string(),
+                    }],
+                });
+            }
+
+            // Directory install
             let target_type = classify_dir(&scoped).ok_or_else(|| {
                 CopmError::NoTargetsDetected(format!(
                     "No recognizable content found in {source}:{sp}"
@@ -111,6 +130,26 @@ fn scan_root(root: &Path) -> Vec<(String, String)> {
     }
 
     results
+}
+
+/// Determine the target type of a single file by its name.
+/// Returns None if the filename is not a recognized pattern.
+fn classify_file(name: &str) -> Option<String> {
+    if name == "SKILL.md" {
+        Some("skill".to_string())
+    } else if name == "copilot-instructions.md" {
+        Some("copilot-instructions".to_string())
+    } else if name.ends_with(".agent.md") {
+        Some("copilot-agents".to_string())
+    } else if name.ends_with(".prompt.md") {
+        Some("copilot-prompts".to_string())
+    } else if name.ends_with(".instructions.md") {
+        Some("copilot-custom-instructions".to_string())
+    } else if name.ends_with(".md") {
+        Some("claude-command".to_string())
+    } else {
+        None
+    }
 }
 
 /// Determine the target type of a directory by examining its contents.
