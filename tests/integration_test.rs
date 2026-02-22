@@ -550,3 +550,126 @@ fn test_install_single_file_prompt() {
     assert!(dest_dir.join("update-llms.prompt.md").exists());
     assert!(!dest_dir.join("other.prompt.md").exists()); // only one file copied
 }
+
+// ── Real-world repo structure compatibility tests ─────────────────────────────
+
+#[test]
+fn test_compat_anthropics_skills_style() {
+    // anthropics/skills: skills/ 以下にスキルフォルダが並ぶ
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join("skills/webapp-testing")).unwrap();
+    std::fs::create_dir_all(root.join("skills/pdf")).unwrap();
+    std::fs::create_dir_all(root.join(".claude-plugin")).unwrap();
+    std::fs::write(root.join("skills/webapp-testing/SKILL.md"), "").unwrap();
+    std::fs::write(root.join("skills/pdf/SKILL.md"), "").unwrap();
+
+    let m = PackageManifest::detect_from_dir(root, None, "anthropics/skills").unwrap();
+    assert_eq!(m.targets.len(), 1);
+    assert_eq!(m.targets[0].target_type, "skill");
+    assert_eq!(m.targets[0].path, "skills"); // skills/ ディレクトリ全体をコレクションとして認識
+}
+
+#[test]
+fn test_compat_root_level_skills_style() {
+    // ArtemisAI/skills-for-copilot: スキルフォルダがルート直下に並ぶ
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join("webapp-testing")).unwrap();
+    std::fs::create_dir_all(root.join("pdf")).unwrap();
+    std::fs::write(root.join("webapp-testing/SKILL.md"), "").unwrap();
+    std::fs::write(root.join("pdf/SKILL.md"), "").unwrap();
+
+    let m = PackageManifest::detect_from_dir(root, None, "artemis/skills-for-copilot").unwrap();
+    assert_eq!(m.targets.len(), 1);
+    assert_eq!(m.targets[0].target_type, "skill");
+    assert_eq!(m.targets[0].path, "."); // root 全体をスキルコレクションとして認識
+}
+
+#[test]
+fn test_compat_category_skill_hierarchy_ambiguous() {
+    // alirezarezvani/claude-skills: カテゴリ→スキルの2段階 + agents/ が混在
+    // → AmbiguousTargets になる（agentsとskillが混在するため）
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join("engineering/senior-dev")).unwrap();
+    std::fs::create_dir_all(root.join("marketing/content")).unwrap();
+    std::fs::create_dir_all(root.join("agents")).unwrap();
+    std::fs::write(root.join("engineering/senior-dev/SKILL.md"), "").unwrap();
+    std::fs::write(root.join("marketing/content/SKILL.md"), "").unwrap();
+    std::fs::write(root.join("agents/architect.agent.md"), "").unwrap();
+
+    let result = PackageManifest::detect_from_dir(root, None, "user/claude-skills");
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("Multiple targets detected"), "got: {err}");
+}
+
+#[test]
+fn test_compat_category_skill_hierarchy_subpath() {
+    // alirezarezvani/claude-skills: :engineering でサブパス指定 → skill コレクション
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join("engineering/senior-dev")).unwrap();
+    std::fs::create_dir_all(root.join("engineering/junior-dev")).unwrap();
+    std::fs::write(root.join("engineering/senior-dev/SKILL.md"), "").unwrap();
+    std::fs::write(root.join("engineering/junior-dev/SKILL.md"), "").unwrap();
+
+    let m = PackageManifest::detect_from_dir(root, Some("engineering"), "user/claude-skills").unwrap();
+    assert_eq!(m.targets[0].target_type, "skill");
+    assert_eq!(m.targets[0].path, "engineering");
+}
+
+#[test]
+fn test_compat_github_skills_dir_not_autodetected() {
+    // microsoft/azure-devops-skills: .github/skills/ 配下のスキルはサブパス必須
+    // → root スキャンでは NoTargetsDetected
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join(".github/skills/boards-my-work")).unwrap();
+    std::fs::write(root.join(".github/skills/boards-my-work/SKILL.md"), "").unwrap();
+
+    // サブパス無し → 検出されない
+    let result = PackageManifest::detect_from_dir(root, None, "microsoft/azure-devops-skills");
+    assert!(result.is_err());
+
+    // :(.github/skills) サブパス指定 → 検出される
+    let m = PackageManifest::detect_from_dir(root, Some(".github/skills"), "microsoft/azure-devops-skills").unwrap();
+    assert_eq!(m.targets[0].target_type, "skill");
+}
+
+#[test]
+fn test_compat_root_copilot_instructions_wins() {
+    // SebastienDegodez スタイル: root の copilot-instructions.md が優先される
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join(".github/instructions")).unwrap();
+    std::fs::write(root.join("copilot-instructions.md"), "# Main").unwrap();
+    std::fs::write(root.join(".github/instructions/ddd.instructions.md"), "DDD").unwrap();
+
+    // root スキャン → copilot-instructions.md を検出
+    let m = PackageManifest::detect_from_dir(root, None, "user/copilot-instructions").unwrap();
+    assert_eq!(m.targets[0].target_type, "copilot-instructions");
+
+    // .github/instructions サブパス → custom-instructions を検出
+    let m2 = PackageManifest::detect_from_dir(root, Some(".github/instructions"), "user/copilot-instructions").unwrap();
+    assert_eq!(m2.targets[0].target_type, "copilot-custom-instructions");
+}
+
+#[test]
+fn test_compat_deep_nested_instructions_need_subpath() {
+    // Code-and-Sorts スタイル: instructions/languages/python/ に .instructions.md
+    // → :instructions では検出されない（1段深い）
+    let tmp = tempfile::tempdir().unwrap();
+    let root = tmp.path();
+    std::fs::create_dir_all(root.join("instructions/languages/python")).unwrap();
+    std::fs::write(root.join("instructions/languages/python/python.instructions.md"), "").unwrap();
+
+    // :instructions/languages では NoTargetsDetected（files が更に1段深い）
+    let result = PackageManifest::detect_from_dir(root, Some("instructions/languages"), "user/repo");
+    assert!(result.is_err());
+
+    // :instructions/languages/python まで指定すると検出できる
+    let m = PackageManifest::detect_from_dir(root, Some("instructions/languages/python"), "user/repo").unwrap();
+    assert_eq!(m.targets[0].target_type, "copilot-custom-instructions");
+}
