@@ -14,7 +14,7 @@ pub enum Command {
         /// Package specifier (e.g., user/repo). Omit to install all from copm.json.
         package: Option<String>,
 
-        /// Install globally (~/.claude/plugins/copm-packages/)
+        /// Install globally (~/.copilot/skills/ or ~/.claude/skills/)
         #[arg(short, long)]
         global: bool,
     },

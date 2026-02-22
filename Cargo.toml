@@ -12,7 +12,6 @@ tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json", "stream"] }
 dirs = "6"
 thiserror = "2"
-anyhow = "1"
 tempfile = "3"
 walkdir = "2"
 sha2 = "0.10"

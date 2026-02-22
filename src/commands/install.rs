@@ -108,14 +108,15 @@ pub async fn run_all() -> Result<(), CopmError> {
 }
 
 /// Derive a package name from repo + optional sub_path.
-/// "awesome-copilot" + Some("agents") → "awesome-copilot-agents"
-/// "humanizer" + None → "humanizer"
+/// "awesome-copilot" + Some("agents")                        → "awesome-copilot-agents"
+/// "awesome-copilot" + Some("prompts/update-llms.prompt.md") → "awesome-copilot-update-llms"
+/// "humanizer"       + None                                  → "humanizer"
 fn package_name(repo: &str, sub_path: Option<&str>) -> String {
     match sub_path {
         Some(sp) => {
-            // Use the last segment of sub_path as a suffix
-            let suffix = sp.split('/').last().unwrap_or(sp);
-            // Avoid redundant suffix if repo already ends with it
+            // Use the last segment of sub_path, stripping any file extension
+            let last = sp.split('/').last().unwrap_or(sp);
+            let suffix = strip_md_extensions(last);
             if repo.ends_with(suffix) {
                 repo.to_string()
             } else {
@@ -124,4 +125,16 @@ fn package_name(repo: &str, sub_path: Option<&str>) -> String {
         }
         None => repo.to_string(),
     }
+}
+
+/// Strip known Markdown-based extensions from a filename stem.
+/// "update-llms.prompt.md" → "update-llms"
+/// "agents"                → "agents"  (no change)
+fn strip_md_extensions(name: &str) -> &str {
+    for ext in [".prompt.md", ".agent.md", ".instructions.md", ".md"] {
+        if let Some(stem) = name.strip_suffix(ext) {
+            return stem;
+        }
+    }
+    name
 }

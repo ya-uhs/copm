@@ -179,6 +179,10 @@ fn classify_dir(dir: &Path) -> Option<String> {
             let name = entry.file_name().to_string_lossy().to_string();
 
             if file_type.is_file() {
+                // Skip README.* files — they're documentation, not Copilot config files
+                if name.starts_with("README.") {
+                    continue;
+                }
                 if name.ends_with(".instructions.md") {
                     has_instructions = true;
                 } else if name.ends_with(".agent.md") {
