@@ -12,8 +12,7 @@ pub fn run() -> Result<(), CopmError> {
 
     let tools = prompt_tools()?;
 
-    let mut config = CopmJson::default();
-    config.tools = tools;
+    let config = CopmJson { tools, ..Default::default() };
     config.save(&path)?;
     println!("Created copm.json");
     Ok(())

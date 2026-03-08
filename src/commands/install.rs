@@ -115,7 +115,7 @@ fn package_name(repo: &str, sub_path: Option<&str>) -> String {
     match sub_path {
         Some(sp) => {
             // Use the last segment of sub_path, stripping any file extension
-            let last = sp.split('/').last().unwrap_or(sp);
+            let last = sp.split('/').next_back().unwrap_or(sp);
             let suffix = strip_md_extensions(last);
             if repo.ends_with(suffix) {
                 repo.to_string()
