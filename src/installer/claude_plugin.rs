@@ -49,7 +49,7 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), CopmError> {
     std::fs::create_dir_all(dst)?;
     for entry in WalkDir::new(src).min_depth(1) {
         let entry = entry.map_err(|e| {
-            CopmError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))
+            CopmError::Io(std::io::Error::other(e.to_string()))
         })?;
         let relative = entry.path().strip_prefix(src).unwrap();
         let dest_path = dst.join(relative);
